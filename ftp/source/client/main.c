@@ -39,6 +39,7 @@ int send_c(int fd,n_cmd* command){
 	}
 	return 0;
 }
+//一定要想清楚你到底要发什么，发送的时候是“内容无关”的，不能用任何函数除了去获取一个长度，只能使用数据来源给你的长度
 int send_file(int fd,char *path){
 	data d;
 	int ret;
@@ -103,23 +104,37 @@ int main(int argc,char *argv[]){
 	int fdw=-1;
 	int flag=-1;
 	int len;
+	int sign=0;
+	data d;
 	while(1){
 		retforw=epoll_wait(efd,evs,2,-1);
 		for(i=0;i<retforw;i++){
 			if(EPOLLIN==evs[i].events&&0==evs[i].data.fd){
-				bzero(buf,sizeof(buf));
-				read(0,buf,sizeof(buf));
-				ret=com_cton(buf,&ncmd,&cs);
-				if(-1==ret){
-					continue;
-				}
-				send_c(sfd,&ncmd);
-				printf("wait...\n");
-				if(3==ncmd.key){
+				if(1==sign){
 					bzero(buf,sizeof(buf));
-					strcpy(buf,ncmd.argv);
-					buf[strlen(buf)-1]=0;
-					send_file(sfd,buf);
+					read(0,buf,sizeof(buf));
+					ret=com_cton(buf,&ncmd,&cs);
+					if(-1==ret){
+						continue;
+					}
+					send_c(sfd,&ncmd);
+					printf("wait...\n");
+					if(3==ncmd.key){
+						bzero(buf,sizeof(buf));
+						strcpy(buf,ncmd.argv);
+						buf[strlen(buf)-1]=0;
+						send_file(sfd,buf);
+					}
+				}else{
+					bzero(d.buf,sizeof(d.buf));
+					ret=read(0,d.buf,sizeof(d.buf));
+					if(-1==ret){
+						printf("输入异常，或可再试\n");
+						continue;
+					}
+					d.buf[strlen(d.buf)-1]=0;
+					d.len=ret-1;
+					send_n(sfd,(char*)&d,d.len+4);
 				}
 			}
 			if(EPOLLIN==evs[i].events&&sfd==evs[i].data.fd){
@@ -138,6 +153,9 @@ int main(int argc,char *argv[]){
 						close(fdw);
 						fdw=-1;
 					}
+				}else if(0==len&&0==sign){
+					printf("sign in succeed!\n");
+					sign=1;
 				}else{
 					len=0-len;
 					bzero(buf,sizeof(buf));

@@ -131,7 +131,7 @@ int sign_in(uid_t *uid,int fd){
 	recv_n(fd,buf1,len);
 	int i;
 	int j;
-	for(i=0,j=0;i<3;i++,j++){
+	for(i=0,j=0;i<3;j++){
 		if(sp->sp_pwdp[j]=='$'){
 			i++;
 		}
@@ -262,13 +262,18 @@ void* func(void* p){
 		//响应客户端请求，等待factory的任务分配
 		fd=assign(f);
 		//验证登陆，获取用户uid
-//		ret=sign_in(&uid,fd);
-//		if(-1==ret){
-//			bzero(d.buf,sizeof(d.buf));
-//			sprintf(d.buf,"sign_in failed,try again\n");
-//			d.len=strlen(d.buf);
-//			send_n(fd,(char*)&d,d.len+4);
-//		}
+		while(1){
+			ret=sign_in(&uid,fd);
+			if(-1==ret){
+				bzero(d.buf,sizeof(d.buf));
+				sprintf(d.buf,"sign_in failed,try again\n");
+				d.len=strlen(d.buf);
+				send_n(fd,(char*)&d,d.len+4);
+				continue;
+			}
+			break;
+		}
+		send_n(fd,(char*)&ret,sizeof(int));
 		strcpy(abpath,getcwd(NULL,0));
 		while(1){
 			//接收命令
