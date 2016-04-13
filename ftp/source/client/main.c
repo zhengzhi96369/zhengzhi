@@ -55,7 +55,7 @@ int send_file(int fd,char *path){
 		}else if(0==ret){
 			break;
 		}else{
-			d.len=strlen(d.buf);
+			d.len=ret;
 			send_n(fd,(char*)&d,d.len+4);
 		}
 	}
