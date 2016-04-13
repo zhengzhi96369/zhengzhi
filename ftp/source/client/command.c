@@ -54,6 +54,7 @@ int com_cton(const char* cmd,n_cmd* ncmd,pcset set)
 	strncpy(c,cmd,i);
 	pc_node p;
 	int ret;
+	puts(c);
 	ret=com_ismember(c,&p,set);
 	if(-1==ret){
 		printf("command not exists\n");

@@ -6,7 +6,7 @@ int send_n(int fd,char *start,int len){
 	while(total<len){
 		one=send(fd,start+total,len-total,0);
 		if(-1==one){
-			perror("send");
+			printf("send error");
 			return -1;
 		}
 		total=total+one;
@@ -19,7 +19,7 @@ int recv_n(int fd,char *start,int len){
 	while(total<len){
 		one=recv(fd,start+total,len-total,0);
 		if(-1==one){
-			perror("recv");
+			printf("recv error");
 			return -1;
 		}
 		total=total+one;
@@ -81,6 +81,7 @@ int main(int argc,char *argv[]){
 		return -1;
 	}
 	cset cs;
+	cs.head=NULL;
 	ret=com_init(argv[3],&cs);
 	if(-1==ret){
 		printf("command set init failed\n");
@@ -113,6 +114,7 @@ int main(int argc,char *argv[]){
 					continue;
 				}
 				send_c(sfd,&ncmd);
+				printf("wait...\n");
 				if(3==ncmd.key){
 					bzero(buf,sizeof(buf));
 					strcpy(buf,ncmd.argv);

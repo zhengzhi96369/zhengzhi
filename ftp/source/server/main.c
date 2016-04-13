@@ -6,7 +6,7 @@ int send_n(int fd,char *start,int len){
 	while(total<len){
 		one=send(fd,start+total,len-total,0);
 		if(-1==one){
-			perror("send");
+			printf("send error\n");
 			return -1;
 		}
 		total=total+one;
@@ -19,7 +19,7 @@ int recv_n(int fd,char *start,int len){
 	while(total<len){
 		one=recv(fd,start+total,len-total,0);
 		if(-1==one){
-			perror("recv");
+			printf("recv error\n");
 			return -1;
 		}
 		total=total+one;
@@ -201,10 +201,9 @@ int send_file(int fd,const char *path){
 		}else if(0==ret){
 			break;
 		}else{
-			puts(d.buf);
-			d.len=0-strlen(d.buf);
-			printf("%d\n",d.len);
-			send_n(fd,(char*)&d,strlen(d.buf)+4);
+			d.len=0-ret;
+			printf("send %d bytes\n",ret);
+			send_n(fd,(char*)&d,ret+4);
 		}
 	}
 	send_n(fd,(char*)&flag,sizeof(int));
