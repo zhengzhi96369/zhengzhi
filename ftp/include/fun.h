@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <crypt.h>
 #include <grp.h>
+#include <syslog.h>
 #include <time.h>
 #define F "file"
 typedef struct{

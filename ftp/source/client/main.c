@@ -105,7 +105,11 @@ int main(int argc,char *argv[]){
 	int flag=-1;
 	int len;
 	int sign=0;
+	struct stat status;
 	data d;
+	char name[128];
+	char new_name[128];
+	off_t off;
 	while(1){
 		retforw=epoll_wait(efd,evs,2,-1);
 		for(i=0;i<retforw;i++){
@@ -118,7 +122,6 @@ int main(int argc,char *argv[]){
 						continue;
 					}
 					send_c(sfd,&ncmd);
-					printf("wait...\n");
 					if(3==ncmd.key){
 						bzero(buf,sizeof(buf));
 						strcpy(buf,ncmd.argv);
@@ -144,13 +147,26 @@ int main(int argc,char *argv[]){
 					recv_n(sfd,buf,len);
 					printf("%s",buf);
 				}else if(0==len&&4==ncmd.key){
+				//先尝试用追加模式打开，如果打开成功，就查看文件状态获取它的大小发送给服务器
 					if(-1==fdw){
-						bzero(buf,sizeof(buf));
-						strcpy(buf,ncmd.argv);
-						buf[strlen(buf)-1]=0;
-						fdw=open(buf,O_CREAT|O_EXCL|O_WRONLY,0666);
+						bzero(name,sizeof(buf));
+						strcpy(name,ncmd.argv);
+						name[strlen(name)-1]=0;
+						strcat(name,".temp");
+						fdw=open(name,O_APPEND|O_WRONLY);
+						if(-1==fdw){
+							fdw=open(name,O_CREAT|O_EXCL|O_WRONLY,0666);
+							off=0;
+						}else{
+							stat(name,&status);
+							off=status.st_size;
+						}
+						send_n(sfd,(char*)&off,sizeof(off));
 					}else{
+						bzero(new_name,sizeof(new_name));
+						strncpy(new_name,name,strlen(name)-5);
 						close(fdw);
+						rename(name,new_name);
 						fdw=-1;
 					}
 				}else if(0==len&&0==sign){

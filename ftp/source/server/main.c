@@ -83,9 +83,21 @@ int ls_ll(char *path,int fd){
 		dd.len=strlen(dd.buf);
 		send_n(fd,(char*)&dd,dd.len+4);
 	}
-} 
+}
+int priority(uid_t uid,const char *path){
+	struct passwd *pw;
+	pw=getpwuid(uid);
+	struct stat buf;
+	stat(path,&buf);
+	if(buf.st_uid==uid){
+		return 0;//文件所有者
+	}
+	if(buf.st_gid==pw->pw_gid){
+		return 1;//文件所有者同组
+	}
+	return 2;//游客访问
+}
 int sign_in(uid_t *uid,int fd){
-	printf("wait sign in\n");
 	int len;
 	data d;
 	lable:
@@ -175,8 +187,8 @@ int recv_c(int fd,n_cmd* command){
 //发一个0表示切换开关状态，发负值作为文件的标识
 int send_file(int fd,const char *path){
 	int fdr;
+	off_t off;
 	data d;
-	printf("send file from %s\n",path);
 	fdr=open(path,O_RDONLY);
 	if(-1==fdr){
 		bzero(d.buf,sizeof(d.buf));
@@ -188,6 +200,8 @@ int send_file(int fd,const char *path){
 	int ret;
 	int flag=0;
 	send_n(fd,(char*)&flag,sizeof(int));
+	recv_n(fd,(char*)&off,sizeof(off_t));
+	lseek(fdr,off,SEEK_SET);
 	while(1){
 		bzero(d.buf,sizeof(d.buf));
 		ret=read(fdr,d.buf,sizeof(d.buf)-1);
@@ -202,7 +216,6 @@ int send_file(int fd,const char *path){
 			break;
 		}else{
 			d.len=0-ret;
-			printf("send %d bytes\n",ret);
 			send_n(fd,(char*)&d,ret+4);
 		}
 	}
@@ -212,6 +225,7 @@ int send_file(int fd,const char *path){
 	d.len=strlen(d.buf);
 	send_n(fd,(char*)&d,4+strlen(d.buf));
 	close(fdr);
+	return 0;
 }
 int recv_file(int fd,const char *path){
 	int fdw;
@@ -225,7 +239,6 @@ int recv_file(int fd,const char *path){
 		send_n(fd,(char*)&d,4+strlen(d.buf));
 		return -1;
 	}
-	printf("ready to recieve\n");
 	int len=0;
 	send_n(fd,(char*)&len,sizeof(int));
 	char buf[1024];
@@ -243,6 +256,9 @@ int recv_file(int fd,const char *path){
 	send_n(fd,(char*)&len,sizeof(int));
 	return 0;
 }
+int isvalid(int key){
+	return 0<=key&&key<=256?1:0;
+}
 void* func(void* p){
 	//接收文件描述符
 	//就这里需要改，流程已经不再简单
@@ -258,6 +274,9 @@ void* func(void* p){
 	DIR *dir;
 	char *cur;
 	int j;
+	time_t t;
+	struct stat status;
+	char mode[20];
 	while(1){
 		//响应客户端请求，等待factory的任务分配
 		fd=assign(f);
@@ -279,7 +298,7 @@ void* func(void* p){
 			//接收命令
 			bzero(&command,sizeof(command));
 			ret=recv_c(fd,&command);
-			if(-1==ret){
+			if(-1==ret||!isvalid(command.key)){
 				bzero(d.buf,sizeof(d.buf));
 				sprintf(d.buf,"command recieve error,try again\n");
 				d.len=strlen(d.buf);
@@ -306,6 +325,10 @@ void* func(void* p){
 			}
 			*cur=0;
 			//解析命令并执行
+			bzero(buf,sizeof(buf));
+			time(&t);
+			sprintf(buf,"Command key:%d,Excel time:%s",command.key,ctime(&t));
+			syslog(LOG_INFO,"%s",buf);
 			switch(command.key){
 				case 0:
 					//abpath
@@ -406,6 +429,52 @@ void* func(void* p){
 					strcat(buf,cargv[0]);
 					recv_file(fd,buf);
 					break;
+				case 5:
+				//删除文件需要文件所在目录的写和执行权限
+					bzero(buf,sizeof(buf));
+					strcpy(buf,abpath);
+					strcat(buf,"/");
+					strcat(buf,cargv[0]);
+					ret=priority(uid,abpath);
+					bzero(mode,sizeof(mode));
+					stat(abpath,&status);
+					getMode(mode,status.st_mode);
+					cur=mode+strlen(mode)-(2-ret)*3;
+					if(*(cur-1)!='-'&&*(cur-2)!='-'){
+						unlink(buf);
+					}else{
+						bzero(d.buf,sizeof(d.buf));
+						sprintf(d.buf,"No enough priority\n");
+						d.len=strlen(d.buf);
+						send_n(fd,(char*)&d,d.len+4);
+					}
+					break;
+				case 6:	
+					bzero(buf,sizeof(buf));
+					strcpy(buf,abpath);
+					strcat(buf,"/");
+					strcat(buf,cargv[0]);
+					switch(priority(uid,buf)){
+						case 0:
+							bzero(d.buf,sizeof(d.buf));
+							sprintf(d.buf,"You are the owner\n");
+							d.len=strlen(d.buf);
+							send_n(fd,(char*)&d,d.len+4);
+							break;
+						case 1:
+							bzero(d.buf,sizeof(d.buf));
+							sprintf(d.buf,"You are in the same group with the owner\n");
+							d.len=strlen(d.buf);
+							send_n(fd,(char*)&d,d.len+4);
+							break;
+						case 2:
+							bzero(d.buf,sizeof(d.buf));
+							sprintf(d.buf,"You are only a visitor\n");
+							d.len=strlen(d.buf);
+							send_n(fd,(char*)&d,d.len+4);
+							break;
+					}
+					break;
 				case 8:
 					bzero(d.buf,sizeof(d.buf));
 					sprintf(d.buf,"%s is rigou\n%s and %s is watching\n",cargv[0],cargv[1],cargv[2]);
@@ -425,7 +494,7 @@ void* func(void* p){
 					send_n(fd,(char*)&d,d.len+4);
 					break;
 				default:
-				printf("key=%d\n",command.key);
+					printf("key=%d\n",command.key);
 			}
 			free(cargv);
 		}
@@ -464,16 +533,24 @@ int main(int argc,char *argv[]){//ip port pnum capability
 	ev.data.fd=sfd;
 	epoll_ctl(efd,EPOLL_CTL_ADD,sfd,&ev);
 	pnode n;
+	struct sockaddr_in client;
+	int len=sizeof(struct sockaddr);
+	time_t t;
+	char buf[1024];
 	while(1){
 		ret=epoll_wait(efd,&ev,1,-1);
 		if(ret>0){
 			if(ev.events==EPOLLIN&&ev.data.fd==sfd){
 				n=(pnode)malloc(sizeof(node));
-				n->fd=accept(sfd,NULL,NULL);
+				n->fd=accept(sfd,(struct sockaddr*)&client,&len);
 				if(n->fd<0){
 					perror("accept");
 					return -1;
 				}
+				time(&t);
+				bzero(buf,sizeof(buf));
+				sprintf(buf,"Client IP:%s,Client Port:%d,Link time:%s",inet_ntoa(client.sin_addr),ntohs(client.sin_port),ctime(&t));
+				syslog(LOG_INFO,"%s",buf);
 				n->next=NULL;
 				visit(&f,n);
 			}	

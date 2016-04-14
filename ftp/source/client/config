@@ -3,6 +3,9 @@ ls 1 1 abcde
 pwd 2 0 abcde
 puts 3 1 abcde
 gets 4 1 abcde
+remove 5 1 abcde
+priority 6 1 abcde
+userchange 7 0 abcde
 rigou 8 3 abcde
 chenzan 9 1 abcde
 maren 10 1 abcde
