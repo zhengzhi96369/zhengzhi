@@ -189,6 +189,7 @@ int send_file(int fd,const char *path){
 	int fdr;
 	off_t off;
 	data d;
+	struct stat status;
 	fdr=open(path,O_RDONLY);
 	if(-1==fdr){
 		bzero(d.buf,sizeof(d.buf));
@@ -201,22 +202,56 @@ int send_file(int fd,const char *path){
 	int flag=0;
 	send_n(fd,(char*)&flag,sizeof(int));
 	recv_n(fd,(char*)&off,sizeof(off_t));
-	lseek(fdr,off,SEEK_SET);
-	while(1){
-		bzero(d.buf,sizeof(d.buf));
-		ret=read(fdr,d.buf,sizeof(d.buf)-1);
-		if(-1==ret){
+	stat(path,&status);
+	off_t way=0;
+	if(status.st_size-off>MS){
+		//做映射
+		way=status.st_size-off;
+		d.len=0-sizeof(way);
+		memcpy(d.buf,&way,sizeof(way));
+		send_n(fd,(char*)&d,sizeof(way)+4);
+		char *cur,*p;
+		p=(char*)mmap(NULL,way,PROT_READ,MAP_PRIVATE,fdr,off);
+		cur=p;
+		int once,total;
+		total=0;
+		while(1){
 			bzero(d.buf,sizeof(d.buf));
-			sprintf(d.buf,"服务器炸了，请重试\n");
-			d.len=strlen(d.buf);
-			send_n(fd,(char*)&d,4+strlen(d.buf));
-			send_n(fd,(char*)&flag,sizeof(int));
-			return -1;
-		}else if(0==ret){
-			break;
-		}else{
-			d.len=0-ret;
-			send_n(fd,(char*)&d,ret+4);
+			if(way-total>sizeof(d.buf)){
+				memcpy(d.buf,cur,sizeof(d.buf));
+				d.len=0-sizeof(d.buf);
+				send_n(fd,(char*)&d,0-d.len+4);
+				total+=sizeof(d.buf);
+				cur+=sizeof(d.buf);
+				printf("total=%d\n",total);
+			}else{
+				printf("last time\n");
+				memcpy(d.buf,cur,way-total);
+				d.len=0-(way-total);
+				send_n(fd,(char*)&d,0-d.len+4);
+				break;
+			}
+		}
+		munmap(p,way);
+	}else{
+		lseek(fdr,off,SEEK_SET);
+		send_n(fd,(char*)&way,sizeof(int));
+		while(1){
+			bzero(d.buf,sizeof(d.buf));
+			ret=read(fdr,d.buf,sizeof(d.buf)-1);
+			if(-1==ret){
+				bzero(d.buf,sizeof(d.buf));
+				sprintf(d.buf,"服务器炸了，请重试\n");
+				d.len=strlen(d.buf);
+				send_n(fd,(char*)&d,4+strlen(d.buf));
+				send_n(fd,(char*)&flag,sizeof(int));
+				return -1;
+			}else if(0==ret){
+				break;
+			}else{
+				d.len=0-ret;
+				send_n(fd,(char*)&d,ret+4);
+			}
 		}
 	}
 	send_n(fd,(char*)&flag,sizeof(int));
@@ -280,18 +315,18 @@ void* func(void* p){
 	while(1){
 		//响应客户端请求，等待factory的任务分配
 		fd=assign(f);
-		//验证登陆，获取用户uid
-		while(1){
-			ret=sign_in(&uid,fd);
-			if(-1==ret){
-				bzero(d.buf,sizeof(d.buf));
-				sprintf(d.buf,"sign_in failed,try again\n");
-				d.len=strlen(d.buf);
-				send_n(fd,(char*)&d,d.len+4);
-				continue;
-			}
-			break;
+	//验证登陆，获取用户uid
+	while(1){
+		ret=sign_in(&uid,fd);
+		if(-1==ret){
+			bzero(d.buf,sizeof(d.buf));
+			sprintf(d.buf,"sign_in failed,try again\n");
+			d.len=strlen(d.buf);
+			send_n(fd,(char*)&d,d.len+4);
+			continue;
 		}
+		break;
+	}
 		send_n(fd,(char*)&ret,sizeof(int));
 		strcpy(abpath,getcwd(NULL,0));
 		while(1){

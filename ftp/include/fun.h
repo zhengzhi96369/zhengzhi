@@ -18,9 +18,11 @@
 #include <dirent.h>
 #include <crypt.h>
 #include <grp.h>
+#include <sys/mman.h>
 #include <syslog.h>
 #include <time.h>
 #define F "file"
+#define MS 100000000
 typedef struct{
 	int len;
 	char buf[1000];

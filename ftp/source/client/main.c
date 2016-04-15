@@ -19,7 +19,7 @@ int recv_n(int fd,char *start,int len){
 	while(total<len){
 		one=recv(fd,start+total,len-total,0);
 		if(-1==one){
-			printf("recv error");
+//			perror("recv error");
 			return -1;
 		}
 		total=total+one;
@@ -105,11 +105,14 @@ int main(int argc,char *argv[]){
 	int flag=-1;
 	int len;
 	int sign=0;
+	off_t way;
+	int signal=1;
 	struct stat status;
 	data d;
 	char name[128];
 	char new_name[128];
 	off_t off;
+	char *cur,*p;
 	while(1){
 		retforw=epoll_wait(efd,evs,2,-1);
 		for(i=0;i<retforw;i++){
@@ -173,6 +176,41 @@ int main(int argc,char *argv[]){
 					printf("sign in succeed!\n");
 					sign=1;
 				}else{
+					if(signal==1){
+						recv_n(sfd,(char*)&way,sizeof(way));
+						printf("way=%ld\n",(long)way);
+						if(way!=0){
+							lseek(fdw,way-2,SEEK_END);
+							write(fdw,"a",2);
+							puts(name);
+							close(fdw);
+							fdw=open(name,O_RDWR);
+							if(-1==fdw){
+								perror("open");
+								return -1;
+							}
+							stat(name,&status);
+							printf("size of the new file:%ld\n",status.st_size);
+							p=(char*)mmap(NULL,way,PROT_WRITE,MAP_SHARED,fdw,off);
+							cur=p;
+							if(NULL==p	|| p == (void *)-1){
+								perror("mmap");
+								return -1;
+							}
+							printf("HeHe\n");
+						}
+						signal=0;
+						continue;
+					}
+					if(0!=way){
+						len=0-len;
+						recv_n(sfd,cur,len);
+						cur+=len;
+						if(len<sizeof(d.buf)){
+							munmap(cur,way);
+						}
+						continue;
+					}
 					len=0-len;
 					bzero(buf,sizeof(buf));
 					recv_n(sfd,buf,len);
